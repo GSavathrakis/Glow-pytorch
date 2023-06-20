@@ -24,7 +24,7 @@ def parser():
 
 	parser_generate.add_argument("--model_path", type=str, help="The path to the saved model")
 	parser_generate.add_argument('--dataset', type=str, default='MNIST')
-	parser_generate.add_argument("--num_samples", type=int, default=10, help="Number of samples to be generated")
+	parser_generate.add_argument("--num_samples", type=int, default=5, help="Number of samples to be generated")
 	parser_generate.add_argument('--hidden_channels', type=int, default=256)
 	parser_generate.add_argument('--num_flow_steps', type=int, default=2)
 	parser_generate.add_argument('--num_levels', type=int, default=2)

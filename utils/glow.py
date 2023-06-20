@@ -6,6 +6,9 @@ from torch.distributions import Uniform, Distribution
 import random
 import copy
 
+torch.manual_seed(42)
+torch.set_default_dtype(torch.float64)
+
 def weights_init(m):
     classname = m.__class__.__name__
     if classname.find('Conv') != -1:
@@ -56,10 +59,11 @@ class Actnorm(nn.Module):
 
 		
 class Inv1x1Conv(nn.Module):
-	def __init__(self, input_shape):
+	def __init__(self, input_shape, device):
 		super(Inv1x1Conv, self).__init__()
 		self.input_shape = input_shape
 		self.conv = nn.Conv2d(input_shape[0], input_shape[0], kernel_size=1, padding=0, stride=1, bias=False)
+		self.device = device
 		torch.nn.init.xavier_uniform(self.conv.weight)
 
 	def forward(self, x):
@@ -73,7 +77,14 @@ class Inv1x1Conv(nn.Module):
 
 	def inverse(self, y):
 		W = self.conv.weight.reshape(self.input_shape[0], self.input_shape[0])
-		x = torch.matmul(torch.inverse(W), y)
+		x = torch.zeros(y.shape).to(self.device)
+		for d in range(y.shape[0]):
+			for i in range(y.shape[2]):
+				for j in range(x.shape[3]):
+					x[d,:,i,j]=torch.matmul(torch.inverse(W), y[d,:,i,j])
+		#print(torch.inverse(W).repeat(y.shape[0],1,1).reshape(y.shape[0],16,16,1).shape)
+		#print(y.shape)
+		#x = torch.bmm(torch.inverse(W).repeat(y.shape[0],1,1).reshape(y.shape[0],16,16,1), y)
 		return x
 
 class ACL(nn.Module):
@@ -116,13 +127,15 @@ class ACL(nn.Module):
 		return y, logdet
 
 	def inverse(self,y, perm):
-		y_spls = torch.split(y, self.num_splits, dim=1)
+		y_spls = torch.split(y, y.shape[1]//self.num_splits, dim=1)
 		perm_new = copy.deepcopy(perm)
-		x_spls = [x_spls[i] for i in perm_new.reverse()]
+		y_spls = [y_spls[i] for i in perm_new]
 		x_i_1 = y_spls[0]
 		xs=[]
 		xs.append(x_i_1)
 		for i in range(1,self.num_splits):
+			#print(x_i_1.shape)
+			#print(y_spls[i].shape)
 			x_i = (y_spls[i]-self.t(x_i_1))/torch.exp(self.logs(x_i_1))
 			xs.append(x_i)
 			x_i_1=x_i
@@ -148,7 +161,7 @@ class Flow_steps(nn.Module):
 		w = input_shape[2]
 
 		self.actnorms = nn.ModuleList([Actnorm((c*ch**(2*(i+1)), h//(ch**(i+1)), w//(ch**(i+1)))).to(device) for i in range(num_levels)])
-		self.InvConvs = nn.ModuleList([Inv1x1Conv((c*ch**(2*(i+1)), h//(ch**(i+1)), w//(ch**(i+1)))).to(device) for i in range(num_levels)])
+		self.InvConvs = nn.ModuleList([Inv1x1Conv((c*ch**(2*(i+1)), h//(ch**(i+1)), w//(ch**(i+1))), device).to(device) for i in range(num_levels)])
 		self.ACLs = nn.ModuleList([ACL((c*ch**(2*(i+1)), h//(ch**(i+1)), w//(ch**(i+1))), hidden_channels, num_splits).to(device) for i in range(num_levels)])
 		'''
 		for i in range(num_levels):
@@ -173,7 +186,7 @@ class Flow_steps(nn.Module):
 	def inverse(self,y, level):
 		y_out = y
 		for k in range(0,self.num_flow_steps):
-			y1 = self.ACLs[level].inverse(y_out)
+			y1 = self.ACLs[level].inverse(y_out, self.perm_vec[self.num_flow_steps-1-k])
 			y2 = self.InvConvs[level].inverse(y1)
 			y3 = self.actnorms[level].inverse(y2)
 			y_out = y3
@@ -189,8 +202,9 @@ class Glow(nn.Module):
 		masks = [self._get_mask(input_shape, orientation=(i % 2 == 0)).to(device) for i in range(n_flow_steps)]
 		self.n_levels = n_levels
 		self.Fstep = Flow_steps(n_flow_steps, n_levels, input_shape, hidden_shape, masks, n_splits, device, ch=chunk_size)
-		self.output_shape = (input_shape[0]*chunk_size**(2*n_levels), input_shape[1]//(chunk_size**n_levels), input_shape[2]//(chunk_size**n_levels))
+		self.output_shapes = [(input_shape[0]*chunk_size**(2*(i+1)), input_shape[1]//(chunk_size**(i+1)), input_shape[2]//(chunk_size**(i+1))) for i in range(n_levels)]
 		self.chunk_size = chunk_size
+		self.device = device
 
 		if prior_type == 'logistic':
 			self.prior = LogisticDistribution()
@@ -238,7 +252,7 @@ class Glow(nn.Module):
 		for lev in range(self.n_levels-1, -1, -1):
 			z_lev = z_per_flow[lev]
 			z_curr = z_lev+x
-			x = self.Fstep.inverse(z_curr)
+			x = self.Fstep.inverse(z_curr, lev)
 			x = self.unsqueeze(x)
 		
 		return x
@@ -270,17 +284,17 @@ class Glow(nn.Module):
 		h_pr = x.shape[2]
 		w_pr = x.shape[3]
 
-		y = x.permute(0,2,3,1)
-		y = y.view(x.shape[0], h_pr*self.chunk_size, self.chunk_size, w_pr*self.chunk_size, self.chunk_size, c_pr)
-		y = y.permute(0,1,3,2,4,5)
-		y = y.reshape(x.shape[0], h_pr*self.chunk_size, w_pr*self.chunk_size, c//(self.chunk_size**2))
-		y = y.permute(0,3,1,2)
+		y = x.view(x.shape[0], c_pr//(self.chunk_size**2), h_pr*self.chunk_size, w_pr*self.chunk_size)
+    
 		return y
 
 	
 	def sample(self, num_samples):
-		y1 = self.prior.sample([num_samples, self.output_shape]).view(num_samples, self.output_shape)
-		y2 = [self.prior.sample([num_samples, self.output_shape]).view(num_samples, self.output_shape) for _ in range(self.n_levels)]
+		y1 = self.prior.sample([num_samples, *self.output_shapes[-1]]).view(num_samples, *self.output_shapes[-1]).type(torch.DoubleTensor).to(self.device)
+		y2 = [self.prior.sample([num_samples, *self.output_shapes[i]]).view(num_samples, *self.output_shapes[i]).type(torch.DoubleTensor).to(self.device) for i in range(self.n_levels)]
+
 		generated_samples = self.inverse(y1, y2)
+
+		return generated_samples
 	
 	
