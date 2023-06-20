@@ -32,7 +32,7 @@ def parser():
 	parser_generate.add_argument('--chunk_size', type=int, default=2)
 
 	return parser.parse_args()
-#bla
+
 def main():
 	args = parser()
 	if (args.mode=='train'):
