@@ -251,6 +251,7 @@ class Glow(nn.Module):
 		x = y
 		for lev in range(self.n_levels-1, -1, -1):
 			z_lev = z_per_flow[lev]
+			#print(z_lev.shape, x.shape)
 			z_curr = z_lev+x
 			x = self.Fstep.inverse(z_curr, lev)
 			x = self.unsqueeze(x)
@@ -273,20 +274,21 @@ class Glow(nn.Module):
 		h = x.shape[2]
 		w = x.shape[3]
 		y = x.permute(0,2,3,1)
-		y = y.view(x.shape[0], h//self.chunk_size, self.chunk_size, w//self.chunk_size, self.chunk_size, c)
+		y = y.view(y.shape[0], h//self.chunk_size, self.chunk_size, w//self.chunk_size, self.chunk_size, c)
 		y = y.permute(0,1,3,2,4,5)
-		y = y.reshape(x.shape[0], h//self.chunk_size, w//self.chunk_size, (self.chunk_size**2)*c)
+		y = y.reshape(y.shape[0], y.shape[1], y.shape[2], (self.chunk_size**2)*y.shape[5])
 		y = y.permute(0,3,1,2)
 		return y
 
-	def unsqueeze(self, x):
-		c_pr = x.shape[1]
-		h_pr = x.shape[2]
-		w_pr = x.shape[3]
+	def unsqueeze(self, y):
 
-		y = x.view(x.shape[0], c_pr//(self.chunk_size**2), h_pr*self.chunk_size, w_pr*self.chunk_size)
+		x = y.permute(0,2,3,1)
+		x = x.view(x.shape[0], x.shape[1], x.shape[2], self.chunk_size, self.chunk_size, x.shape[3]//(self.chunk_size**2))
+		x = x.permute(0,1,3,2,4,5)
+		x = x.reshape(x.shape[0],x.shape[1]*self.chunk_size, x.shape[3]*self.chunk_size, x.shape[5])
+		x = x.permute(0,3,1,2)
     
-		return y
+		return x
 
 	
 	def sample(self, num_samples):

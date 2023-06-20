@@ -23,7 +23,7 @@ def plot_samples(samples):
 		#print(samp.shape)
 		# Restrict pixel values from 0 to 1
 		#arr_nump = torch.clamp(samp, 0, 1).cpu().detach().numpy().copy()
-		ax[n_samp].imshow(samp.reshape(shape[1],shape[2],shape[0]), cmap='gray')
+		ax[n_samp].imshow(samp[0], cmap='gray')
 		ax[n_samp].axis('off')
 		n_samp+=1
 
