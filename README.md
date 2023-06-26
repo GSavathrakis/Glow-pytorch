@@ -4,7 +4,7 @@ with Invertible 1×1 Convolutions" by Kingma et al.
 
 It can either be used for training or inference on a pretrained model.
 
-For training, an example for the MNIST dataset isto run: 
+For training, an example for the MNIST dataset is to run: 
 `python main.py train --dataset MNIST`
 
 For inference run:
