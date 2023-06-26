@@ -1,2 +1,6 @@
 data/
 __pycache__/
+*.pt
+saved_models_FashionMNIST/
+saved_models_MNIST/
+
