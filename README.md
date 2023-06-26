@@ -4,10 +4,10 @@ with Invertible 1×1 Convolutions" by Kingma et al.
 
 It can either be used for training or inference on a pretrained model.
 
-For training, an example for the MNIST dataset is 
+For training, an example for the MNIST dataset isto run: 
 `python main.py train --dataset MNIST`
 
-For inference an example is 
-`python main.py generate --model_path 'path_to_model'.pt`
+For inference run:
+`python main.py generate --model_path path_to_model.pt`
 
 In the generate.py script one has to manually change the data shape depending on the dataset on which the model was trained. The one used is (1,28,28) which is for the MNIST dataset.
